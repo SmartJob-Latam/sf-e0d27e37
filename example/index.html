@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' }
+  </script>
+  <style>
+    [data-drop] { display: none; position: absolute; z-index: 50; }
+    [data-drop].open { display: block; }
+    .modal-bg { display: none; }
+    .modal-bg.open { display: flex; }
+    .line-through { text-decoration: line-through; }
+    /* ensure group-hover works on dynamic content */
+    .group:hover .opacity-0 { opacity: 1; }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white">
+
+<div class="flex h-screen overflow-hidden">
+
+  <!-- Sidebar -->
+  <aside class="w-64 shrink-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+    <div class="p-6">
+      <h1 class="text-xl font-bold">Title</h1>
+    </div>
+    <nav class="flex-1 px-4" id="sidebar-nav"></nav>
+  </aside>
+
+  <!-- Main -->
+  <div class="flex-1 flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="shrink-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+      <div class="flex items-center justify-end space-x-3">
+
+        <!-- Theme toggle -->
+        <button id="btn-theme" class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
+          <i id="icon-theme" data-lucide="moon" class="w-4 h-4"></i>
+        </button>
+
+        <!-- Notifications -->
+        <div class="relative">
+          <button id="btn-notif" class="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
+            <i data-lucide="bell" class="w-4 h-4"></i>
+            <span class="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
+          </button>
+          <div id="drop-notif" data-drop class="right-0 top-11 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-4">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold">Notifications</h3>
+              <button class="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Mark all as read</button>
+            </div>
+            <hr class="border-gray-200 dark:border-gray-700 mb-3">
+            <div id="notif-list" class="space-y-3 max-h-72 overflow-y-auto"></div>
+          </div>
+        </div>
+
+        <!-- User -->
+        <div class="relative">
+          <button id="btn-user">
+            <img id="hdr-avatar" src="" alt="" class="w-8 h-8 rounded-full object-cover cursor-pointer">
+          </button>
+          <div id="drop-user" data-drop class="right-0 top-11 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-4">
+            <div class="flex items-center space-x-3 mb-3">
+              <img id="drop-avatar" src="" alt="" class="w-12 h-12 rounded-full object-cover">
+              <div>
+                <p id="drop-name" class="font-semibold"></p>
+                <p id="drop-email" class="text-sm text-gray-500 dark:text-gray-400"></p>
+              </div>
+            </div>
+            <hr class="border-gray-200 dark:border-gray-700 mb-3">
+            <div class="space-y-1">
+              <button class="w-full flex items-center px-3 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"><i data-lucide="user" class="w-4 h-4 mr-2"></i>Profile Settings</button>
+              <button class="w-full flex items-center px-3 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"><i data-lucide="settings" class="w-4 h-4 mr-2"></i>Account Settings</button>
+              <button class="w-full flex items-center px-3 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"><i data-lucide="help-circle" class="w-4 h-4 mr-2"></i>Help &amp; Support</button>
+            </div>
+            <hr class="border-gray-200 dark:border-gray-700 my-3">
+            <button class="w-full flex items-center px-3 py-2 text-sm rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400"><i data-lucide="log-out" class="w-4 h-4 mr-2"></i>Sign Out</button>
+          </div>
+        </div>
+
+      </div>
+    </header>
+
+    <!-- Page content -->
+    <main class="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900" id="main"></main>
+
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="modal-bg" class="modal-bg fixed inset-0 bg-black/50 z-50 items-center justify-center">
+  <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 w-full max-w-md mx-4">
+    <h3 id="modal-title" class="text-lg font-semibold mb-4"></h3>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// DATA
+// ─────────────────────────────────────────────
+const people = [
+  { id:'people_0',  name:'Lily Grace',    imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690876/people/0_riwhwx.jpg',  email:'lily.grace@company.com',    workingHours:{start:'09:00',end:'17:00',timezone:'UTC'}, team:'design' },
+  { id:'people_1',  name:'Adam Reid',     imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690877/people/1_ndgrxc.jpg',  email:'adam.reid@company.com',     workingHours:{start:'08:00',end:'16:00',timezone:'UTC'}, team:'dev' },
+  { id:'people_2',  name:'Owen Scott',    imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690877/people/2_qz3dx8.jpg',  email:'owen.scott@company.com',    workingHours:{start:'10:00',end:'18:00',timezone:'UTC'}, team:'qa' },
+  { id:'people_3',  name:'Mia Belle',     imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690878/people/3_kfxcej.jpg',  email:'mia.belle@company.com',     workingHours:{start:'09:30',end:'17:30',timezone:'UTC'}, team:'design' },
+  { id:'people_4',  name:'Zoe Jane',      imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690877/people/4_ci0ymm.jpg',  email:'zoe.jane@company.com',      workingHours:{start:'07:00',end:'15:00',timezone:'UTC'}, team:'product' },
+  { id:'people_5',  name:'Ella Rae',      imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690880/people/5_piun9q.jpg',  email:'ella.rae@company.com',      workingHours:{start:'09:00',end:'17:00',timezone:'UTC'}, team:'marketing' },
+  { id:'people_6',  name:'Miles Parker',  imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690879/people/6_fyrri9.jpg',  email:'miles.parker@company.com',  workingHours:{start:'08:30',end:'16:30',timezone:'UTC'}, team:'dev' },
+  { id:'people_7',  name:'Nora Quinn',    imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690880/people/7_jhk8k6.jpg',  email:'nora.quinn@company.com',    workingHours:{start:'10:00',end:'18:00',timezone:'UTC'}, team:'qa' },
+  { id:'people_8',  name:'Caleb Knox',    imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690880/people/8_y7nrrp.jpg',  email:'caleb.knox@company.com',    workingHours:{start:'09:00',end:'17:00',timezone:'UTC'}, team:'dev' },
+  { id:'people_9',  name:'Isla Brooke',   imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690881/people/9_oyi177.jpg',  email:'isla.brooke@company.com',   workingHours:{start:'08:00',end:'16:00',timezone:'UTC'}, team:'design' },
+  { id:'people_10', name:'Cole Bennett',  imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690881/people/10_ah36jq.jpg', email:'cole.bennett@company.com',  workingHours:{start:'11:00',end:'19:00',timezone:'UTC'}, team:'product' },
+  { id:'people_11', name:'Lucy Pearl',    imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690876/people/11_jjng4x.jpg', email:'lucy.pearl@company.com',    workingHours:{start:'09:00',end:'17:00',timezone:'UTC'}, team:'product' },
+  { id:'people_12', name:'Maya Lynn',     imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690876/people/12_egrkib.jpg', email:'maya.lynn@company.com',     workingHours:{start:'08:30',end:'16:30',timezone:'UTC'}, team:'marketing' },
+  { id:'people_13', name:'Anna Leigh',    imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690878/people/13_mjcvdj.jpg', email:'anna.leigh@company.com',    workingHours:{start:'10:30',end:'18:30',timezone:'UTC'}, team:'qa' },
+  { id:'people_14', name:'Sadie Jo',      imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690880/people/14_breddm.jpg', email:'sadie.jo@company.com',      workingHours:{start:'07:30',end:'15:30',timezone:'UTC'}, team:'dev' },
+  { id:'people_15', name:'Jack Ryan',     imageURL:'https://res.cloudinary.com/ds574fco0/image/upload/v1753690879/people/15_h5rxq3.jpg', email:'jack.ryan@company.com',     workingHours:{start:'09:30',end:'17:30',timezone:'UTC'}, team:'marketing' },
+];
+
+const teams = [
+  { id:'dev',       name:'Development',       color:'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' },
+  { id:'qa',        name:'Quality Assurance', color:'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' },
+  { id:'design',    name:'Design',            color:'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300' },
+  { id:'product',   name:'Product',           color:'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300' },
+  { id:'marketing', name:'Marketing',         color:'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-300' },
+];
+
+const notifications = [
+  { title:'New task assigned',  message:`${people[0].name} assigned you to 'Help DStudio get more customers'`, time:'2 minutes ago',  unread:true },
+  { title:'Meeting reminder',   message:'Kickoff Meeting starts in 30 minutes',                                 time:'28 minutes ago', unread:true },
+  { title:'Task completed',     message:`${people[2].name} completed 'Return a package'`,                      time:'1 hour ago',     unread:false },
+  { title:'Comment added',      message:`${people[1].name} commented on 'Plan a trip'`,                        time:'2 hours ago',    unread:false },
+];
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+const S = {
+  page: 'tasks',
+  dark: false,
+  // tasks page
+  period: 'This Week',
+  selectedDate: 17,
+  weekStart: 15,
+  tasks: {
+    'This Week': [
+      { id:1, name:'Help DStudio get more customers',  comments:7,  likes:2,  assigneeId:'people_0', status:'In Progress', sc:'bg-green-100 text-green-800' },
+      { id:2, name:'Plan a trip',                      comments:10, likes:3,  assigneeId:'people_1', status:'Pending',     sc:'bg-pink-100 text-pink-800' },
+      { id:3, name:'Return a package',                 comments:5,  likes:8,  assigneeId:'people_2', status:'Completed',   sc:'bg-blue-100 text-blue-800' },
+    ],
+    'Last Week': [
+      { id:4, name:'Design new landing page',       comments:12, likes:5, assigneeId:'people_3', status:'Completed', sc:'bg-blue-100 text-blue-800' },
+      { id:5, name:'Update user documentation',     comments:3,  likes:1, assigneeId:'people_4', status:'Completed', sc:'bg-blue-100 text-blue-800' },
+      { id:6, name:'Fix mobile responsive issues',  comments:8,  likes:4, assigneeId:'people_5', status:'Completed', sc:'bg-blue-100 text-blue-800' },
+    ],
+    'This Month': [
+      { id:7,  name:'Q1 Marketing Campaign',   comments:25, likes:12, assigneeId:'people_6', status:'In Progress', sc:'bg-green-100 text-green-800' },
+      { id:8,  name:'Database optimization',   comments:15, likes:7,  assigneeId:'people_7', status:'In Progress', sc:'bg-green-100 text-green-800' },
+      { id:9,  name:'User feedback analysis',  comments:18, likes:9,  assigneeId:'people_8', status:'Pending',     sc:'bg-pink-100 text-pink-800' },
+      { id:10, name:'Security audit',          comments:6,  likes:3,  assigneeId:'people_9', status:'Completed',   sc:'bg-blue-100 text-blue-800' },
+    ],
+  },
+  schedule: {
+    15: [{ title:'Team Standup',         time:'09:00 AM to 09:30 AM', attendeeIds:['people_0','people_1'] }],
+    16: [{ title:'Client Review Meeting',time:'02:00 PM to 03:00 PM', attendeeIds:['people_2','people_3'] }],
+    17: [
+      { title:'Kickoff Meeting',                                    time:'01:00 PM to 02:30 PM', attendeeIds:['people_4','people_5'] },
+      { title:'Create Wordpress website for event Registration',    time:'04:00 PM to 05:30 PM', attendeeIds:['people_6','people_7'] },
+      { title:'Create User flow for hotel booking',                 time:'05:00 PM to 06:30 PM', attendeeIds:['people_8','people_9'] },
+    ],
+    18: [{ title:'Design Review',   time:'10:00 AM to 11:00 AM', attendeeIds:['people_10'] }],
+    19: [{ title:'Sprint Planning', time:'03:00 PM to 04:30 PM', attendeeIds:['people_11','people_12','people_13'] }],
+    20: [{ title:'Weekly Demo',     time:'11:00 AM to 12:00 PM', attendeeIds:['people_14','people_15'] }],
+    21: [],
+  },
+  notes: [
+    { id:'1', title:'Landing Page For Website',               description:'To get started on a landing page, could you provide a bit more detail about its purpose?', completed:false },
+    { id:'2', title:'Fixing icons with dark backgrounds',     description:'Use icons that are easily recognizable and straightforward. Avoid overly complex designs.', completed:false },
+    { id:'3', title:'Discussion regarding userflow improvement', description:"What's the main goal of the landing page? (e.g., lead generation, product)", completed:true },
+  ],
+  // people page
+  peopleQ: '',
+  teamFilter: 'all',
+  viewMode: 'list',
+};
+
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
+const currentUser = people.find(p => p.id === 'people_11');
+const getPerson  = id => people.find(p => p.id === id) || people[0];
+const getTeam    = id => teams.find(t => t.id === id);
+const initials   = name => name.split(' ').map(n => n[0]).join('');
+const isOnline   = p => { const t = new Date().toTimeString().slice(0,5); return t >= p.workingHours.start && t <= p.workingHours.end; };
+
+function av(person, size='w-6 h-6') {
+  return `<img src="${person.imageURL}" alt="${initials(person.name)}" title="${person.name}"
+    class="${size} rounded-full object-cover shrink-0"
+    onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+    <span style="display:none" class="${size} rounded-full bg-gray-300 dark:bg-gray-600 text-xs font-medium flex items-center justify-center shrink-0">${initials(person.name)}</span>`;
+}
+
+function icons() { lucide.createIcons(); }
+
+// ─────────────────────────────────────────────
+// SIDEBAR
+// ─────────────────────────────────────────────
+const NAV = [
+  { id:'tasks',     label:'My Tasks',  icon:'check-square' },
+  { id:'dashboard', label:'Section 1', icon:'bar-chart-3' },
+  { id:'projects',  label:'Section 2', icon:'folder' },
+  { id:'documents', label:'Section 3', icon:'file-text' },
+  { id:'receipts',  label:'Section 4', icon:'receipt' },
+  { id:'people',    label:'People',    icon:'users' },
+];
+
+function renderSidebar() {
+  document.getElementById('sidebar-nav').innerHTML = NAV.map(n => {
+    const active = S.page === n.id;
+    const cls = active
+      ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700';
+    return `<button onclick="go('${n.id}')" class="w-full flex items-center px-3 py-2 mb-1 text-sm font-medium rounded-lg transition-colors ${cls}">
+      <i data-lucide="${n.icon}" class="w-4 h-4 mr-3"></i>${n.label}
+    </button>`;
+  }).join('');
+  icons();
+}
+
+// ─────────────────────────────────────────────
+// HEADER
+// ─────────────────────────────────────────────
+function renderHeader() {
+  document.getElementById('hdr-avatar').src    = currentUser.imageURL;
+  document.getElementById('drop-avatar').src   = currentUser.imageURL;
+  document.getElementById('drop-name').textContent  = currentUser.name;
+  document.getElementById('drop-email').textContent = currentUser.email;
+  document.getElementById('notif-list').innerHTML = notifications.map(n => `
+    <div class="p-3 rounded-lg ${n.unread ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-gray-50 dark:bg-gray-700'}">
+      <div class="flex items-start justify-between">
+        <div class="flex-1">
+          <p class="text-sm font-medium">${n.title}</p>
+          <p class="text-sm text-gray-600 dark:text-gray-300 mt-1">${n.message}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">${n.time}</p>
+        </div>
+        ${n.unread ? '<div class="w-2 h-2 bg-blue-500 rounded-full mt-1 ml-2 shrink-0"></div>' : ''}
+      </div>
+    </div>`).join('');
+  icons();
+}
+
+// ─────────────────────────────────────────────
+// ROUTER
+// ─────────────────────────────────────────────
+function go(page) {
+  S.page = page;
+  closeDrops();
+  renderSidebar();
+  renderPage();
+}
+
+function renderPage() {
+  const main = document.getElementById('main');
+  switch (S.page) {
+    case 'tasks':     main.innerHTML = tasksHTML();     afterTasks();    break;
+    case 'people':    main.innerHTML = peopleHTML();    afterPeople();   break;
+    case 'dashboard': main.innerHTML = placeholder('Lorem Ipsum Dolor',       'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.'); break;
+    case 'projects':  main.innerHTML = placeholder('Consectetur Adipiscing',  'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit.'); break;
+    case 'documents': main.innerHTML = placeholder('Sed Ut Perspiciatis',     'Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.'); break;
+    case 'receipts':  main.innerHTML = placeholder('Neque Porro Quisquam',   'At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi.'); break;
+  }
+  icons();
+}
+
+function placeholder(title, body) {
+  return `<div class="p-6"><div class="max-w-4xl mx-auto">
+    <h1 class="text-3xl font-bold mb-6">${title}</h1>
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+      <p class="text-gray-600 dark:text-gray-300">${body}</p>
+    </div>
+  </div></div>`;
+}
+
+// ─────────────────────────────────────────────
+// TASKS PAGE
+// ─────────────────────────────────────────────
+function tasksHTML() {
+  const tasks = S.tasks[S.period] || [];
+  const schedule = S.schedule[S.selectedDate] || [];
+  const weekDays = ['Mo','Tu','We','Th','Fr','Sa','Su'].map((d,i) => ({ d, date: S.weekStart + i }));
+
+  return `<div class="p-6">
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">Thursday, 20th February</p>
+    <h2 class="text-2xl font-bold mb-4">Good Evening! John,</h2>
+    <div class="flex items-center space-x-4 mb-6">
+      <button class="flex items-center px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+        <i data-lucide="share" class="w-4 h-4 mr-2"></i>Share
+      </button>
+      <button class="flex items-center px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+        <i data-lucide="plus" class="w-4 h-4 mr-2"></i>Add Task
+      </button>
+    </div>
+    <div class="flex items-center space-x-8 mb-8">
+      <div class="flex items-center"><i data-lucide="clock" class="w-4 h-4 mr-2 text-gray-500"></i><span class="font-semibold">12hrs</span><span class="text-sm text-gray-500 dark:text-gray-400 ml-1">Time Saved</span></div>
+      <div class="flex items-center"><i data-lucide="check-circle" class="w-4 h-4 mr-2 text-gray-500"></i><span class="font-semibold">24</span><span class="text-sm text-gray-500 dark:text-gray-400 ml-1">Projects Completed</span></div>
+      <div class="flex items-center"><i data-lucide="zap" class="w-4 h-4 mr-2 text-gray-500"></i><span class="font-semibold">7</span><span class="text-sm text-gray-500 dark:text-gray-400 ml-1">Projects In-progress</span></div>
+    </div>
+
+    <!-- Tasks table -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-semibold flex items-center"><i data-lucide="bar-chart-3" class="w-5 h-5 mr-2"></i>My Projects</h3>
+        <div class="flex items-center space-x-2">
+          <div class="relative">
+            <button id="period-btn" class="flex items-center px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+              ${S.period}<i data-lucide="chevron-down" class="w-4 h-4 ml-2"></i>
+            </button>
+            <div id="drop-period" data-drop class="right-0 top-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-36">
+              ${['This Week','Last Week','This Month'].map(p =>
+                `<button onclick="setPeriod('${p}')" class="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">${p}</button>`
+              ).join('')}
+            </div>
+          </div>
+          <button class="text-sm text-gray-600 dark:text-gray-300 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">See All</button>
+        </div>
+      </div>
+      <div class="grid grid-cols-12 gap-4 text-sm font-medium text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 pb-2 mb-2">
+        <div class="col-span-6 flex items-center"><i data-lucide="edit-3" class="w-4 h-4 mr-2"></i>Task Name</div>
+        <div class="col-span-3 flex items-center"><i data-lucide="users" class="w-4 h-4 mr-2"></i>Assign</div>
+        <div class="col-span-3 flex items-center"><i data-lucide="zap" class="w-4 h-4 mr-2"></i>Status</div>
+      </div>
+      ${tasks.map(t => {
+        const a = getPerson(t.assigneeId);
+        return `<div class="grid grid-cols-12 gap-4 items-center py-3 border-b border-gray-100 dark:border-gray-700 last:border-0">
+          <div class="col-span-6 flex items-center min-w-0">
+            <i data-lucide="check-circle" class="w-4 h-4 mr-3 text-gray-400 shrink-0"></i>
+            <span class="text-sm font-medium truncate">${t.name}</span>
+            <span class="text-xs text-gray-500 flex items-center ml-3 shrink-0"><i data-lucide="message-square" class="w-3 h-3 mr-1"></i>${t.comments}</span>
+            <span class="text-xs text-gray-500 ml-2 shrink-0">♥ ${t.likes}</span>
+          </div>
+          <div class="col-span-3">
+            <div class="relative">
+              <button onclick="toggleDrop(event,'drop-a${t.id}')" class="flex items-center hover:bg-gray-50 dark:hover:bg-gray-700 rounded p-1 max-w-full">
+                ${av(a,'w-6 h-6')}
+                <span class="text-sm text-gray-700 dark:text-gray-300 ml-2 truncate">${a.name}</span>
+                <i data-lucide="chevron-down" class="w-3 h-3 ml-1 shrink-0"></i>
+              </button>
+              <div id="drop-a${t.id}" data-drop class="left-0 top-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 w-56 max-h-48 overflow-y-auto">
+                ${people.map(p => `<button onclick="setAssignee(${t.id},'${p.id}')" class="flex items-center w-full px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">
+                  ${av(p,'w-5 h-5')}
+                  <div class="ml-2 text-left leading-tight"><div>${p.name}</div><div class="text-xs text-gray-500">${p.email}</div></div>
+                </button>`).join('')}
+              </div>
+            </div>
+          </div>
+          <div class="col-span-3">
+            <span class="px-2 py-1 rounded-full text-xs font-medium ${t.sc}">${t.status}</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <!-- Schedule + Notes -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Schedule -->
+      <div class="lg:col-span-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+        <h3 class="font-semibold flex items-center mb-4"><i data-lucide="calendar" class="w-5 h-5 mr-2"></i>Schedule</h3>
+        <div class="flex items-center mb-4">
+          <button onclick="navWeek(-1)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded shrink-0"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+          <div class="grid grid-cols-7 gap-1 text-center text-xs flex-1 mx-2">
+            ${weekDays.map(({d, date}) => `<div>
+              <div class="text-gray-500 dark:text-gray-400 mb-1">${d}</div>
+              <button onclick="selDate(${date})" class="w-6 h-6 mx-auto rounded-full flex items-center justify-center text-xs transition-colors ${S.selectedDate===date ? 'bg-purple-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}">${date}</button>
+            </div>`).join('')}
+          </div>
+          <button onclick="navWeek(1)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded shrink-0"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+        </div>
+        <div class="space-y-3 min-h-48">
+          ${schedule.length === 0
+            ? `<div class="text-center py-8 text-gray-500 dark:text-gray-400"><i data-lucide="calendar" class="w-8 h-8 mx-auto mb-2 opacity-50"></i><p class="text-sm">No events scheduled for this day</p></div>`
+            : schedule.map(item => `<div class="flex items-start space-x-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                <div class="w-2 h-2 rounded-full bg-blue-500 mt-2 shrink-0"></div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium truncate">${item.title}</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">${item.time}</p>
+                </div>
+                <div class="flex -space-x-1 shrink-0">
+                  ${item.attendeeIds.map(id => { const p=getPerson(id); return `<img src="${p.imageURL}" title="${p.name}" class="w-5 h-5 rounded-full border-2 border-white dark:border-gray-800 object-cover">`; }).join('')}
+                </div>
+              </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-semibold flex items-center"><i data-lucide="file-text" class="w-5 h-5 mr-2"></i>Notes</h3>
+          <button onclick="openAddNote()" class="flex items-center px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+            <i data-lucide="plus" class="w-4 h-4 mr-1"></i>Add Note
+          </button>
+        </div>
+        <div id="notes-list" class="space-y-4">${notesHTML()}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function afterTasks() {
+  document.getElementById('period-btn').addEventListener('click', e => {
+    e.stopPropagation(); toggleDrop(e, 'drop-period');
+  });
+}
+
+// ─────────────────────────────────────────────
+// TASKS ACTIONS
+// ─────────────────────────────────────────────
+function setPeriod(p) { S.period = p; closeDrops(); renderPage(); }
+function selDate(d) { S.selectedDate = d; renderPage(); }
+function navWeek(dir) { S.weekStart += dir * 7; renderPage(); }
+function setAssignee(taskId, personId) {
+  S.tasks[S.period] = S.tasks[S.period].map(t => t.id===taskId ? {...t, assigneeId:personId} : t);
+  closeDrops(); renderPage();
+}
+
+// ─────────────────────────────────────────────
+// NOTES
+// ─────────────────────────────────────────────
+function notesHTML() {
+  if (!S.notes.length) return `<div class="text-center py-8 text-gray-500 dark:text-gray-400"><i data-lucide="file-text" class="w-8 h-8 mx-auto mb-2 opacity-50"></i><p class="text-sm">No notes yet.</p></div>`;
+  return S.notes.map(n => `
+    <div class="flex items-start space-x-3 group">
+      <input type="checkbox" ${n.completed?'checked':''} onchange="toggleNote('${n.id}',this.checked)" class="mt-1 rounded accent-blue-600 shrink-0">
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium ${n.completed ? 'line-through text-gray-400 dark:text-gray-500' : ''}">${n.title}</p>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">${n.description}</p>
+      </div>
+      <div class="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button onclick="openEditNote('${n.id}')" class="p-1 rounded text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700"><i data-lucide="edit" class="w-3 h-3"></i></button>
+        <button onclick="delNote('${n.id}')" class="p-1 rounded text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600"><i data-lucide="trash-2" class="w-3 h-3"></i></button>
+      </div>
+    </div>`).join('');
+}
+
+function refreshNotes() {
+  const el = document.getElementById('notes-list');
+  if (el) { el.innerHTML = notesHTML(); icons(); }
+}
+
+function toggleNote(id, v) { S.notes = S.notes.map(n => n.id===id ? {...n,completed:v} : n); refreshNotes(); }
+function delNote(id) { S.notes = S.notes.filter(n => n.id!==id); refreshNotes(); }
+
+function openAddNote() {
+  modal('Add New Note', `
+    <div class="space-y-4">
+      <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Title</label>
+        <input id="m-title" type="text" placeholder="Enter note title" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
+      <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+        <textarea id="m-desc" rows="3" placeholder="Enter note description" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"></textarea></div>
+      <div class="flex justify-end space-x-2">
+        <button onclick="closeModal()" class="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">Cancel</button>
+        <button onclick="saveNewNote()" class="px-4 py-2 text-sm bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-700 dark:hover:bg-gray-100">Add Note</button>
+      </div>
+    </div>`);
+}
+
+function saveNewNote() {
+  const title = document.getElementById('m-title').value.trim();
+  const desc  = document.getElementById('m-desc').value.trim();
+  if (!title) return;
+  S.notes.push({ id: Date.now().toString(), title, description: desc, completed: false });
+  closeModal(); refreshNotes();
+}
+
+function openEditNote(id) {
+  const n = S.notes.find(x => x.id===id); if (!n) return;
+  modal('Edit Note', `
+    <div class="space-y-4">
+      <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Title</label>
+        <input id="m-title" type="text" value="${n.title.replace(/"/g,'&quot;')}" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
+      <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+        <textarea id="m-desc" rows="3" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none">${n.description}</textarea></div>
+      <div class="flex justify-end space-x-2">
+        <button onclick="closeModal()" class="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">Cancel</button>
+        <button onclick="saveEdit('${id}')" class="px-4 py-2 text-sm bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-700 dark:hover:bg-gray-100">Save Changes</button>
+      </div>
+    </div>`);
+}
+
+function saveEdit(id) {
+  const title = document.getElementById('m-title').value.trim();
+  const desc  = document.getElementById('m-desc').value.trim();
+  if (!title) return;
+  S.notes = S.notes.map(n => n.id===id ? {...n,title,description:desc} : n);
+  closeModal(); refreshNotes();
+}
+
+// ─────────────────────────────────────────────
+// PEOPLE PAGE
+// ─────────────────────────────────────────────
+function peopleHTML() {
+  const q = S.peopleQ.toLowerCase();
+  const filtered = people.filter(p => {
+    const matchQ = p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q);
+    const matchT = S.teamFilter === 'all' || p.team === S.teamFilter;
+    return matchQ && matchT;
+  });
+  const teamLabel = S.teamFilter === 'all' ? 'All Teams' : (getTeam(S.teamFilter)?.name || 'All Teams');
+
+  let content;
+  if (filtered.length === 0) {
+    content = `<div class="text-center py-12 text-gray-500 dark:text-gray-400">
+      <i data-lucide="users" class="w-12 h-12 mx-auto mb-4 opacity-50"></i>
+      <h3 class="text-lg font-medium mb-1">No people found</h3>
+      <p class="text-sm">Try adjusting your search or filter criteria</p>
+    </div>`;
+  } else if (S.viewMode === 'list') {
+    content = `<div class="space-y-4">${filtered.map(p => personCard(p,false)).join('')}</div>`;
+  } else if (S.viewMode === 'grid') {
+    content = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">${filtered.map(p => personCard(p,true)).join('')}</div>`;
+  } else {
+    content = teams.map(team => {
+      const tp = filtered.filter(p => p.team === team.id);
+      if (!tp.length) return '';
+      return `<div class="mb-6">
+        <div class="flex items-center space-x-3 mb-4">
+          <h3 class="text-lg font-semibold">${team.name}</h3>
+          <span class="px-2 py-0.5 rounded-full text-xs font-medium ${team.color}">${tp.length} member${tp.length!==1?'s':''}</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">${tp.map(p => personCard(p,true)).join('')}</div>
+      </div>`;
+    }).join('');
+  }
+
+  const vmBtn = (mode, icon) => {
+    const active = S.viewMode === mode;
+    return `<button onclick="setView('${mode}')" class="px-3 py-1.5 rounded text-sm ${active ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}"><i data-lucide="${icon}" class="w-4 h-4"></i></button>`;
+  };
+
+  return `<div class="p-6">
+    <div class="mb-6">
+      <h1 class="text-2xl font-bold mb-1">People</h1>
+      <p class="text-gray-600 dark:text-gray-400">Manage your team members and view their availability</p>
+    </div>
+    <div class="flex flex-col sm:flex-row gap-4 mb-4">
+      <div class="flex-1 relative">
+        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"></i>
+        <input id="people-q" type="text" value="${S.peopleQ}" placeholder="Search by name or email…"
+          class="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div class="flex items-center space-x-2">
+        <div class="relative">
+          <button id="team-btn" class="flex items-center px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+            <i data-lucide="filter" class="w-4 h-4 mr-2"></i>${teamLabel}<i data-lucide="chevron-down" class="w-4 h-4 ml-2"></i>
+          </button>
+          <div id="drop-team" data-drop class="right-0 top-11 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-40">
+            <button onclick="setTeam('all')" class="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">All Teams</button>
+            ${teams.map(t => `<button onclick="setTeam('${t.id}')" class="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">${t.name}</button>`).join('')}
+          </div>
+        </div>
+        <div class="flex items-center border border-gray-300 dark:border-gray-600 rounded-lg p-1 bg-white dark:bg-gray-800 space-x-0.5">
+          ${vmBtn('list','list')}${vmBtn('grid','layout-grid')}${vmBtn('teams','users')}
+        </div>
+      </div>
+    </div>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Showing ${filtered.length} of ${people.length} people${S.teamFilter!=='all'?' in '+getTeam(S.teamFilter)?.name:''}</p>
+    <div class="min-h-96">${content}</div>
+  </div>`;
+}
+
+function personCard(person, compact) {
+  const team    = getTeam(person.team);
+  const online  = isOnline(person);
+  const pad     = compact ? 'p-4' : 'p-6';
+  const imgSize = compact ? 'w-10 h-10' : 'w-12 h-12';
+  return `<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:shadow-md transition-shadow ${pad}">
+    <div class="flex items-start space-x-4">
+      <div class="relative shrink-0">
+        <img src="${person.imageURL}" alt="${person.name}" class="${imgSize} rounded-full object-cover">
+        ${!online ? `<div class="absolute -top-1 -right-1 w-5 h-5 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center border-2 border-white dark:border-gray-800"><i data-lucide="moon" class="w-3 h-3 text-gray-500"></i></div>` : ''}
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center justify-between gap-2">
+          <h3 class="text-sm font-semibold truncate">${person.name}</h3>
+          ${team ? `<span class="px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${team.color}">${team.name}</span>` : ''}
+        </div>
+        <div class="mt-1 space-y-1">
+          <div class="flex items-center text-xs text-gray-500 dark:text-gray-400">
+            <i data-lucide="mail" class="w-3 h-3 mr-1 shrink-0"></i><span class="truncate">${person.email}</span>
+          </div>
+          <div class="flex items-center text-xs text-gray-500 dark:text-gray-400">
+            <i data-lucide="clock" class="w-3 h-3 mr-1 shrink-0"></i>
+            <span>${person.workingHours.start} – ${person.workingHours.end} ${person.workingHours.timezone}</span>
+            <span class="ml-2 ${online ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}">• ${online ? 'Online' : 'Offline'}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function afterPeople() {
+  document.getElementById('people-q').addEventListener('input', e => { S.peopleQ = e.target.value; renderPage(); });
+  document.getElementById('team-btn').addEventListener('click', e => { e.stopPropagation(); toggleDrop(e,'drop-team'); });
+}
+
+function setTeam(id) { S.teamFilter = id; closeDrops(); renderPage(); }
+function setView(m)  { S.viewMode = m; renderPage(); }
+
+// ─────────────────────────────────────────────
+// MODAL
+// ─────────────────────────────────────────────
+function modal(title, bodyHtml) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = bodyHtml;
+  document.getElementById('modal-bg').classList.add('open');
+}
+function closeModal() { document.getElementById('modal-bg').classList.remove('open'); }
+
+// ─────────────────────────────────────────────
+// DROPDOWNS
+// ─────────────────────────────────────────────
+function toggleDrop(e, id) {
+  if (e && e.stopPropagation) e.stopPropagation();
+  const el = document.getElementById(id);
+  const wasOpen = el.classList.contains('open');
+  closeDrops();
+  if (!wasOpen) el.classList.add('open');
+}
+function closeDrops() { document.querySelectorAll('[data-drop]').forEach(el => el.classList.remove('open')); }
+
+// ─────────────────────────────────────────────
+// THEME
+// ─────────────────────────────────────────────
+function toggleTheme() {
+  S.dark = !S.dark;
+  document.documentElement.classList.toggle('dark', S.dark);
+  document.getElementById('icon-theme').setAttribute('data-lucide', S.dark ? 'sun' : 'moon');
+  icons();
+}
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  renderHeader();
+  renderSidebar();
+  renderPage();
+
+  document.getElementById('btn-theme').addEventListener('click', toggleTheme);
+  document.getElementById('btn-notif').addEventListener('click', e => { e.stopPropagation(); toggleDrop(e,'drop-notif'); });
+  document.getElementById('btn-user').addEventListener('click',  e => { e.stopPropagation(); toggleDrop(e,'drop-user'); });
+  document.getElementById('modal-bg').addEventListener('click',  e => { if (e.target===e.currentTarget) closeModal(); });
+  document.addEventListener('click', closeDrops);
+});
+</script>
+</body>
+</html>
